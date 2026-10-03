@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-pii"
+version = "0.1.0.dev1"
+description = "Local Presidio PII redaction plugin for Hermes Agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "presidio-analyzer>=2.2,<3",
+    "spacy>=3.8,<3.9",
+    "it-core-news-sm==3.8.0",
+    "tldextract>=5,<6",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+hermes-pii = "hermes_pii:register"
+
+[tool.uv.sources]
+it-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hermes_pii*"]
