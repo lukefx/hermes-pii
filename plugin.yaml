@@ -1,6 +1,6 @@
 name: hermes-pii
 version: 0.1.0.dev1
-description: "Offline Presidio PII filtering with an installation-provisioned Italian model. Returns original text on detector errors; not a privacy guarantee."
+description: "Offline Presidio PII filtering with an installation-provisioned English model. Returns original text on detector errors; not a privacy guarantee."
 provides_tools: []
 provides_hooks:
   - pre_llm_call
@@ -10,14 +10,13 @@ requires_env: []
 config_schema:
   language:
     type: str
-    default: it
+    default: en
     description: "Language supported by the installed local NLP model"
   model_name:
     type: str
-    default: it_core_news_sm
+    default: en_core_web_sm
     description: "Installed spaCy model or local directory; default model is provisioned at installation"
   score_threshold:
     type: float
     default: 0.4
     description: "Presidio confidence threshold between 0 and 1"
-

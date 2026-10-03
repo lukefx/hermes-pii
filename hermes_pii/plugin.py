@@ -17,7 +17,7 @@ def _warn(error):
 class PiiPlugin:
     """Cache one detector; keep failure handling local to each operation."""
 
-    def __init__(self, language="it", model_name="it_core_news_sm", score_threshold=0.4):
+    def __init__(self, language="en", model_name="en_core_web_sm", score_threshold=0.4):
         self._settings = (language, model_name, score_threshold)
         self._redactor = None
         self._lock = Lock()
@@ -109,8 +109,8 @@ class PiiPlugin:
 def register(ctx):
     """Register callbacks without importing NLP libraries or loading a model."""
     plugin = PiiPlugin(
-        language=ctx.get_config("language", default="it"),
-        model_name=ctx.get_config("model_name", default="it_core_news_sm"),
+        language=ctx.get_config("language", default="en"),
+        model_name=ctx.get_config("model_name", default="en_core_web_sm"),
         score_threshold=ctx.get_config("score_threshold", default=0.4),
     )
     ctx.register_hook("pre_llm_call", plugin.pre_llm_call)

@@ -26,9 +26,9 @@ class OfflineEmailRecognizer(EmailRecognizer):
 
 
 class PresidioRedactor:
-    """Italian text by default; model must already be installed locally."""
+    """English text by default; model must already be installed locally."""
 
-    def __init__(self, language="it", model_name="it_core_news_sm", score_threshold=0.4):
+    def __init__(self, language="en", model_name="en_core_web_sm", score_threshold=0.4):
         self.language = language
         self.score_threshold = score_threshold
         self._lock = RLock()

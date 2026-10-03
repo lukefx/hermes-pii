@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-- Package dependencies install the default <LOCATION> spaCy model during installation.
+- Package dependencies install the default English spaCy model during installation.
 - Registration only installs callbacks; it does not import spaCy or load models.
 - `pre_llm_call` prepares the detector, without analyzing or appending user text.
 - `llm_request` rewrites a provider-bound copy using an explicit field whitelist.
@@ -14,12 +14,13 @@ permanent failure flag, recovery mapping, or request/result cache.
 
 ## Model loading
 
-The named model requirement and its `[tool.uv.sources]` wheel URL are declared
+The default English model requirement and its `[tool.uv.sources]` wheel URL are declared
 in `pyproject.toml` and pinned in `uv.lock`. Hermes PM keeps both in member snapshots.
 Runtime code calls `spacy.load()` and supplies the installed pipeline to Presidio,
 avoiding its stock loader's download path. Email validation uses a bundled
 suffix snapshot with remote URLs and disk caching disabled. Custom models must
-already be installed or provided through a local model directory.
+already be installed or provided through a local model directory. The optional
+Italian model is not installed by default.
 
 No `nlp.initialize()` or training is needed for a pretrained model. Missing
 models raise in the redactor and trigger the plugin's fail-open fallback.
@@ -45,7 +46,7 @@ This policy deliberately allows raw PII to reach a provider on detector errors.
 
 ## Limits
 
-- The default model has a non-commercial license; language accuracy needs benchmarking.
+- The optional Italian model has a non-commercial license; language accuracy needs benchmarking.
 - Multimodal content, unknown provider fields, auxiliary calls, and bypassing paths need separate coverage.
 - There is no recovery map, mandatory egress barrier, or anonymity guarantee.
 - Redacted historical tool arguments may affect replay continuity.

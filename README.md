@@ -5,7 +5,7 @@ or LLM is used for detection. This is a POC, not a confidentiality guarantee.
 
 ## Installation
 
-The default Italian model, `it_core_news_sm` 3.8.0, is a declared package
+The default English model, `en_core_web_sm` 3.8.0, is a declared package
 dependency. Installing the plugin also installs the model; no separate download
 command or spaCy training/initialization step is required.
 
@@ -31,9 +31,9 @@ Restart Hermes after installing, updating code, or changing settings. The projec
 `.venv` is separate from Hermes' managed environment. Do not install the plugin
 both as a directory plugin and as an independently discovered pip entry point.
 
-**Model license:** `it_core_news_sm` is CC BY-NC-SA 3.0. Commercial/enterprise
-use requires a compatible model with an appropriate license. The spaCy library
-has a separate license.
+**Model licenses:** `en_core_web_sm` is MIT. The optional `it_core_news_sm` model
+is CC BY-NC-SA 3.0; verify that its terms fit your use. The spaCy library has a
+separate license.
 
 ## Request flow
 
@@ -52,12 +52,23 @@ registration. Change them with `hermes config set`, then restart Hermes.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `language` | `it` | Language supported by the selected model |
-| `model_name` | `it_core_news_sm` | Installed model name or local model directory |
+| `language` | `en` | Language supported by the selected model |
+| `model_name` | `en_core_web_sm` | Installed model name or local model directory |
 | `score_threshold` | `0.4` | <PERSON> detection threshold |
 
-The default model is installed automatically. Additional/custom models must be
-provisioned separately before use; requests never fetch them.
+The default model is installed automatically. To use Italian, first provision
+`it_core_news_sm` 3.8.0 in the same Hermes environment. The plugin does not
+install or download it at runtime. Then set both Italian settings from the
+command line:
+
+```bash
+hermes config set plugins.entries.hermes-pii.settings.language it
+hermes config set plugins.entries.hermes-pii.settings.model_name it_core_news_sm
+```
+
+Restart Hermes after changing settings. If the selected model is not installed,
+initialization fails and the plugin's fail-open policy passes original text
+through. Additional/custom models must be provisioned separately before use.
 
 ## Supported payloads
 
@@ -94,6 +105,5 @@ uv pip check --python .venv/bin/python
 
 Tests cover real offline detection, provider-payload rewriting, protocol preservation,
 preparation without duplicate analysis, sanitized failures, and transient-error recovery.
-Installation was verified in a fresh Python 3.14 environment: the model was absent
-before installation and available afterward, with socket connections forbidden during
-redaction. No remote LLM was contacted.
+The integration test uses a preinstalled model and forbids socket connections during
+redaction. No remote LLM is contacted.

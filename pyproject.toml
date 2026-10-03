@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "presidio-analyzer>=2.2,<3",
     "spacy>=3.8,<3.9",
-    "it-core-news-sm==3.8.0",
+    "en-core-web-sm==3.8.0",
     "tldextract>=5,<6",
 ]
 
@@ -19,7 +19,7 @@ dependencies = [
 hermes-pii = "hermes_pii:register"
 
 [tool.uv.sources]
-it-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl" }
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
 
 [tool.setuptools.packages.find]
 where = ["."]
