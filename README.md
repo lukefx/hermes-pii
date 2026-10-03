@@ -1,6 +1,6 @@
 # hermes-pii
 
-Local PII detection for Hermes Agent using <PERSON> and spaCy. No cloud service
+Local PII detection for Hermes Agent using `<PERSON>` and spaCy. No cloud service
 or LLM is used for detection. This is a POC, not a confidentiality guarantee.
 
 ## Installation
