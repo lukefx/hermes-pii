@@ -5,8 +5,8 @@ STRUCTURED_ENTITIES = frozenset({
 })
 
 
-def replace_detected_spans(text, detections):
-    """Mask the full union of overlaps; prefer structured-PII placeholder types."""
+def detected_span_groups(text, detections):
+    """Return merged ``(start, end, entity_type)`` spans, preferring structured PII."""
     groups = []
     for detection in sorted(detections, key=lambda item: (item.start, -item.end)):
         if not (
@@ -23,9 +23,14 @@ def replace_detected_spans(text, detections):
                 group[2], group[3] = detection.entity_type, rank
         else:
             groups.append([detection.start, detection.end, detection.entity_type, rank])
+    return [(start, end, entity_type) for start, end, entity_type, _ in groups]
+
+
+def replace_detected_spans(text, detections):
+    """Mask the full union of overlaps; prefer structured-PII placeholder types."""
     pieces = []
     cursor = 0
-    for start, end, entity_type, _ in groups:
+    for start, end, entity_type in detected_span_groups(text, detections):
         pieces.extend((text[cursor:start], f"<{entity_type}>"))
         cursor = end
     pieces.append(text[cursor:])

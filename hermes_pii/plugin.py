@@ -1,8 +1,10 @@
-"""Offline preparation and explicit, fail-open provider request rewriting."""
+"""Prepare the local detector and rewrite outgoing text and attachment content."""
 from copy import deepcopy
 import json
 import logging
 from threading import Lock
+
+from .attachments import is_media_content_part, sanitize_content_part
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +51,20 @@ class PiiPlugin:
         if isinstance(content, str):
             return self._redact_text(content)
         if isinstance(content, list):
-            for part in content:
-                if not isinstance(part, dict) or part.get("type") not in ("text", "input_text", "output_text"):
+            for index, part in enumerate(content):
+                if not isinstance(part, dict):
                     continue
-                if isinstance(part.get("text"), str):
+                if is_media_content_part(part):
+                    content[index] = sanitize_content_part(
+                        part,
+                        detect_spans=lambda text: self._get_redactor().detect_spans(text),
+                        language=self._settings[0],
+                    )
+                    continue
+                if (
+                    part.get("type") in ("text", "input_text", "output_text")
+                    and isinstance(part.get("text"), str)
+                ):
                     part["text"] = self._redact_text(part["text"])
         return content
 
@@ -88,7 +100,7 @@ class PiiPlugin:
                 function["arguments"] = self._redact_arguments(function["arguments"])
 
     def llm_request(self, request, **kwargs):
-        """Only rewrite supported text fields in an outgoing copy."""
+        """Rewrite supported text and media fields in an outgoing request copy."""
         updated = deepcopy(request)
         for key in ("instructions", "input"):
             if isinstance(updated.get(key), str):
@@ -102,7 +114,7 @@ class PiiPlugin:
         return {
             "request": updated,
             "source": "hermes-pii",
-            "reason": "Local PII filtering (fail-open)",
+            "reason": "Local PII filtering with local attachment sanitization",
         }
 
 

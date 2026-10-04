@@ -100,7 +100,10 @@ class PluginTests(unittest.TestCase):
                     sent = plugin.llm_request(request=request)
                     self.assertEqual(sent["request"], request)
                     self.assertEqual(sent["source"], "hermes-pii")
-                    self.assertEqual(sent["reason"], "Local PII filtering (fail-open)")
+                    self.assertEqual(
+                        sent["reason"],
+                        "Local PII filtering with local attachment sanitization",
+                    )
         self.assertEqual(len(logs.output), 2)
         for record in logs.records:
             self.assertIsNone(record.exc_info)
