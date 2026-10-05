@@ -38,7 +38,7 @@ separate license.
 ## Request flow
 
 1. `pre_llm_call` prepares one cached detector. It does not analyze or append user text.
-2. `llm_request` redacts supported text in a copy of the provider request.
+2. `llm_request` redacts user prompt text in a copy of the provider request.
 3. Hermes continues its normal execution; original conversation history is unchanged.
 
 Models load from installed packages or local directories. Runtime loading and
@@ -72,13 +72,14 @@ through. Additional/custom models must be provisioned separately before use.
 
 ## Supported payloads
 
-- Chat Completions message content and text parts.
-- Responses instructions, string/message-list input, text parts, and function outputs.
-- JSON string values in Chat/Responses tool-call arguments.
+- Chat Completions text in messages with `role: user`.
+- Responses string input and text in input messages with `role: user`.
 
-Keys, roles, tool names, call IDs, numeric values, schemas, and non-text parts
-are preserved. Images, audio, asset URLs, metadata, and unlisted provider fields
-are not filtered. Names, places, organizations, email, phones, IBANs, cards, and
+System/developer prompts, Responses instructions, assistant messages, tool-call
+arguments, and tool outputs are preserved and never analyzed. Messages without
+an explicit user role are also preserved. Keys, roles, tool names, call IDs,
+numeric values, schemas, images, audio, asset URLs, metadata, and unlisted
+provider fields are not filtered. Names, places, organizations, email, phones, IBANs, cards, and
 IP addresses are recognized; accuracy and false positives depend on context.
 
 ## Failure policy

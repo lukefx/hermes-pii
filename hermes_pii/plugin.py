@@ -1,6 +1,4 @@
 """Offline preparation and explicit, fail-open provider request rewriting."""
-from copy import deepcopy
-import json
 import logging
 from threading import Lock
 
@@ -49,56 +47,36 @@ class PiiPlugin:
         if isinstance(content, str):
             return self._redact_text(content)
         if isinstance(content, list):
-            for part in content:
+            updated = list(content)
+            for index, part in enumerate(content):
                 if not isinstance(part, dict) or part.get("type") not in ("text", "input_text", "output_text"):
                     continue
                 if isinstance(part.get("text"), str):
-                    part["text"] = self._redact_text(part["text"])
+                    updated[index] = {**part, "text": self._redact_text(part["text"])}
+            return updated
         return content
 
-    def _redact_json_values(self, value):
-        if isinstance(value, str):
-            return self._redact_text(value)
-        if isinstance(value, list):
-            return [self._redact_json_values(item) for item in value]
-        if isinstance(value, dict):
-            return {key: self._redact_json_values(item) for key, item in value.items()}
-        return value
-
-    def _redact_arguments(self, arguments):
-        if not isinstance(arguments, str):
-            return arguments
-        try:
-            parsed = json.loads(arguments)
-        except ValueError:
-            return self._redact_text(arguments)
-        result = self._redact_json_values(parsed)
-        return arguments if result == parsed else json.dumps(result, ensure_ascii=False)
-
     def _redact_message(self, message):
-        if "content" in message:
-            message["content"] = self._redact_content(message["content"])
-        if message.get("type") == "function_call_output" and "output" in message:
-            message["output"] = self._redact_content(message["output"])
-        if message.get("type") == "function_call" and "arguments" in message:
-            message["arguments"] = self._redact_arguments(message["arguments"])
-        for call in message.get("tool_calls", []):
-            function = call.get("function", {})
-            if "arguments" in function:
-                function["arguments"] = self._redact_arguments(function["arguments"])
+        logger.debug("Redacting message: %s", message)
+        if message.get("role") != "user" or message.get("type", "message") != "message":
+            return message
+        if "content" not in message:
+            return message
+        return {**message, "content": self._redact_content(message["content"])}
 
     def llm_request(self, request, **kwargs):
-        """Only rewrite supported text fields in an outgoing copy."""
-        updated = deepcopy(request)
-        for key in ("instructions", "input"):
-            if isinstance(updated.get(key), str):
-                updated[key] = self._redact_text(updated[key])
+        """Copy only rewritten branches, preserving shared input even after Hermes' shallow-copy fallback."""
+        updated = dict(request)
+        # A string Responses input is a user prompt; instructions are preserved.
+        if isinstance(updated.get("input"), str):
+            updated["input"] = self._redact_text(updated["input"])
         for key in ("messages", "input"):
             messages = updated.get(key)
             if isinstance(messages, list):
-                for message in messages:
-                    if isinstance(message, dict):
-                        self._redact_message(message)
+                updated[key] = [
+                    self._redact_message(message) if isinstance(message, dict) else message
+                    for message in messages
+                ]
         return {
             "request": updated,
             "source": "hermes-pii",
@@ -108,10 +86,16 @@ class PiiPlugin:
 
 def register(ctx):
     """Register callbacks without importing NLP libraries or loading a model."""
+    if hasattr(ctx, "get_config"):
+        get_setting = ctx.get_config
+    else:
+        from hermes_cli.config import load_config
+        settings = (load_config() or {}).get("plugins", {}).get("entries", {}).get("hermes-pii", {}).get("settings", {})
+        get_setting = settings.get
     plugin = PiiPlugin(
-        language=ctx.get_config("language", default="en"),
-        model_name=ctx.get_config("model_name", default="en_core_web_sm"),
-        score_threshold=ctx.get_config("score_threshold", default=0.4),
+        language=get_setting("language", "en"),
+        model_name=get_setting("model_name", "en_core_web_sm"),
+        score_threshold=get_setting("score_threshold", 0.4),
     )
     ctx.register_hook("pre_llm_call", plugin.pre_llm_call)
     ctx.register_middleware("llm_request", plugin.llm_request)

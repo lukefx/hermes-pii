@@ -21,6 +21,30 @@ class PluginContext:
 
 
 class PluginTests(unittest.TestCase):
+    def test_selective_copy_preserves_nested_input_and_skips_opaque_fields(self):
+        from unittest.mock import patch
+        from hermes_pii.plugin import PiiPlugin
+
+        class Opaque:
+            def __deepcopy__(self, memo):
+                raise AssertionError("Unfiltered fields must not be copied")
+
+        asset = {"type": "image_url", "image_url": {"url": "opaque"}}
+        text = {"type": "text", "text": "private@example.com"}
+        function = {"name": "send", "arguments": '{"email":"private@example.com"}'}
+        message = {"role": "user", "content": [text, asset], "tool_calls": [{"id": "1", "function": function}]}
+        metadata = Opaque()
+        request = {"messages": [message], "metadata": metadata}
+        plugin = PiiPlugin()
+        with patch.object(plugin, "_redact_text", side_effect=lambda value: value.replace("private@example.com", "<EMAIL_ADDRESS>")):
+            result = plugin.llm_request(request)["request"]
+        self.assertEqual(text["text"], "private@example.com")
+        self.assertEqual(function["arguments"], '{"email":"private@example.com"}')
+        self.assertIs(result["metadata"], metadata)
+        self.assertIs(result["messages"][0]["content"][1], asset)
+        self.assertEqual(result["messages"][0]["content"][0]["text"], "<EMAIL_ADDRESS>")
+        self.assertEqual(result["messages"][0]["tool_calls"][0]["function"]["arguments"], function["arguments"])
+
     def test_hook_and_middleware_remove_pii_from_chat_provider_request(self):
         ctx = PluginContext()
         register(ctx)
@@ -61,30 +85,41 @@ class PluginTests(unittest.TestCase):
             ],
         }
         sent = ctx.middleware["llm_request"](request=request)["request"]
-        self.assertNotIn("private@example.com", sent["instructions"])
+        self.assertEqual(sent["instructions"], request["instructions"])
         self.assertNotIn("user@example.com", sent["input"][0]["content"][0]["text"])
-        self.assertNotIn("user@example.com", sent["input"][1]["output"])
+        self.assertEqual(sent["input"][1], request["input"][1])
         self.assertEqual(sent["input"][1]["call_id"], "call_private@example.com")
 
 
-    def test_tool_arguments_keep_json_keys_and_protocol_identifiers(self):
-        import json
-        ctx = PluginContext()
-        register(ctx)
-        arguments = json.dumps({"email": "private@example.com", "nested": ["other@example.com"], "count": 3})
-        request = {"messages": [{"role": "assistant", "content": None, "tool_calls": [
-            {"id": "call_123", "type": "function", "function": {"name": "send_email", "arguments": arguments}},
-        ]}], "input": [{"type": "function_call", "call_id": "call_123", "name": "send_email", "arguments": arguments}]}
-        sent = ctx.middleware["llm_request"](request=request)["request"]
-        chat_call = sent["messages"][0]["tool_calls"][0]
-        self.assertNotIn("private@example.com", chat_call["function"]["arguments"])
-        self.assertNotIn("other@example.com", chat_call["function"]["arguments"])
-        parsed = json.loads(chat_call["function"]["arguments"])
-        self.assertEqual(set(parsed), {"email", "nested", "count"})
-        self.assertEqual(parsed["count"], 3)
-        self.assertEqual(chat_call["id"], "call_123")
-        self.assertEqual(chat_call["function"]["name"], "send_email")
-        self.assertNotIn("private@example.com", sent["input"][0]["arguments"])
+    def test_only_user_prompts_are_analyzed(self):
+        from unittest.mock import patch
+        from hermes_pii.plugin import PiiPlugin
+        plugin = PiiPlugin()
+        text = "Contact private@example.com"
+        excluded = [
+            {"role": role, "content": text}
+            for role in ("system", "developer", "assistant", "tool")
+        ] + [
+            {"content": text},
+            {"type": "function_call", "arguments": text},
+            {"type": "function_call_output", "output": text},
+        ]
+        for field in ("messages", "input"):
+            with self.subTest(field=field):
+                user = {"role": "user", "content": text}
+                request = {field: excluded + [user], "instructions": text}
+                with patch.object(plugin, "_redact_text", return_value="<EMAIL_ADDRESS>") as redact:
+                    result = plugin.llm_request(request)["request"]
+                redact.assert_called_once_with(text)
+                self.assertEqual(result[field][:-1], excluded)
+                self.assertEqual(result[field][-1]["content"], "<EMAIL_ADDRESS>")
+                self.assertEqual(result["instructions"], text)
+                self.assertEqual(user["content"], text)
+        with patch.object(plugin, "_redact_text", return_value="<EMAIL_ADDRESS>") as redact:
+            result = plugin.llm_request({"input": text, "instructions": text})["request"]
+        redact.assert_called_once_with(text)
+        self.assertEqual(result["input"], "<EMAIL_ADDRESS>")
+        self.assertEqual(result["instructions"], text)
 
 
     def test_missing_model_passes_original_text_and_retries_without_logging_pii(self):
