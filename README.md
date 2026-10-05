@@ -5,19 +5,26 @@ or LLM is used for detection. This is a POC, not a confidentiality guarantee.
 
 ## Installation
 
-The default English model, `en_core_web_sm` 3.8.0, is a declared package
-dependency. Installing the plugin also installs the model; no separate download
-command or spaCy training/initialization step is required.
+Install the default English model, `en_core_web_sm` 3.8.0, separately in the
+Python environment used by Hermes before enabling the plugin. Hermes admits
+named PyPI dependencies only; the model wheel is hosted on GitHub and cannot be
+installed through the plugin dependency installer. Use the interpreter from
+Hermes' managed environment (replace the path below):
 
-The wheel URL is declared in `[tool.uv.sources]`. Use Hermes/uv rather than bare
-`pip`: Hermes PM preserves the named requirement, whereas direct-URL requirements
-are omitted during dependency admission.
+```bash
+uv pip install --python /path/to/hermes/environment/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+/path/to/hermes/environment/bin/python -c "import spacy; spacy.load('en_core_web_sm')"
+```
+
+The plugin does not download models at runtime. If the model is missing,
+redaction fails open and original text is sent to the provider.
 
 For development:
 
 ```bash
 uv venv --python 3.12 .venv
 uv sync --frozen
+uv pip install --python .venv/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 ```
 
 For the existing directory-plugin symlink in a Hermes profile, enable the plugin
@@ -56,7 +63,7 @@ registration. Change them with `hermes config set`, then restart Hermes.
 | `model_name` | `en_core_web_sm` | Installed model name or local model directory |
 | `score_threshold` | `0.4` | <PERSON> detection threshold |
 
-The default model is installed automatically. To use Italian, first provision
+The default model requires separate provisioning. To use Italian, first provision
 `it_core_news_sm` 3.8.0 in the same Hermes environment. The plugin does not
 install or download it at runtime. Then set both Italian settings from the
 command line:
