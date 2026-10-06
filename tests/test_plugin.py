@@ -21,6 +21,18 @@ class PluginContext:
 
 
 class PluginTests(unittest.TestCase):
+    def test_user_pii_is_not_logged_at_debug_level(self):
+        from unittest.mock import patch
+        from hermes_pii.plugin import PiiPlugin
+
+        plugin = PiiPlugin()
+        text = "Contact private@example.com"
+        request = {"messages": [{"role": "user", "content": text}]}
+        with self.assertNoLogs("hermes_pii.plugin", level="DEBUG"):
+            with patch.object(plugin, "_redact_text", return_value="<EMAIL_ADDRESS>"):
+                result = plugin.llm_request(request)["request"]
+        self.assertEqual(result["messages"][0]["content"], "<EMAIL_ADDRESS>")
+
     def test_selective_copy_preserves_nested_input_and_skips_opaque_fields(self):
         from unittest.mock import patch
         from hermes_pii.plugin import PiiPlugin
