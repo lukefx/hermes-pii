@@ -57,7 +57,6 @@ class PiiPlugin:
         return content
 
     def _redact_message(self, message):
-        logger.debug("Redacting message: %s", message)
         if message.get("role") != "user" or message.get("type", "message") != "message":
             return message
         if "content" not in message:
