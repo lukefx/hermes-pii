@@ -53,7 +53,8 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(text["text"], "private@example.com")
         self.assertEqual(function["arguments"], '{"email":"private@example.com"}')
         self.assertIs(result["metadata"], metadata)
-        self.assertIs(result["messages"][0]["content"][1], asset)
+        self.assertEqual(asset["image_url"]["url"], "opaque")
+        self.assertIn("Attachment omitted", result["messages"][0]["content"][1]["text"])
         self.assertEqual(result["messages"][0]["content"][0]["text"], "<EMAIL_ADDRESS>")
         self.assertEqual(result["messages"][0]["tool_calls"][0]["function"]["arguments"], function["arguments"])
 
@@ -147,7 +148,10 @@ class PluginTests(unittest.TestCase):
                     sent = plugin.llm_request(request=request)
                     self.assertEqual(sent["request"], request)
                     self.assertEqual(sent["source"], "hermes-pii")
-                    self.assertEqual(sent["reason"], "Local PII filtering (fail-open)")
+                    self.assertEqual(
+                        sent["reason"],
+                        "Local PII filtering with local attachment sanitization",
+                    )
         self.assertEqual(len(logs.output), 2)
         for record in logs.records:
             self.assertIsNone(record.exc_info)

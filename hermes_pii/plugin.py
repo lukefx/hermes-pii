@@ -2,6 +2,8 @@
 import logging
 from threading import Lock
 
+from .attachments import is_media_content_part, sanitize_content_part
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,9 +51,15 @@ class PiiPlugin:
         if isinstance(content, list):
             updated = list(content)
             for index, part in enumerate(content):
-                if not isinstance(part, dict) or part.get("type") not in ("text", "input_text", "output_text"):
+                if not isinstance(part, dict):
                     continue
-                if isinstance(part.get("text"), str):
+                if is_media_content_part(part):
+                    updated[index] = sanitize_content_part(
+                        part,
+                        detect_spans=lambda text: self._get_redactor().detect_spans(text),
+                        language=self._settings[0],
+                    )
+                elif part.get("type") in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
                     updated[index] = {**part, "text": self._redact_text(part["text"])}
             return updated
         return content
@@ -79,7 +87,7 @@ class PiiPlugin:
         return {
             "request": updated,
             "source": "hermes-pii",
-            "reason": "Local PII filtering (fail-open)",
+            "reason": "Local PII filtering with local attachment sanitization",
         }
 
 

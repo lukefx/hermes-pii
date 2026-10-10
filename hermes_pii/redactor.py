@@ -13,7 +13,7 @@ from presidio_analyzer.predefined_recognizers import (
     PhoneRecognizer,
     SpacyRecognizer,
 )
-from .masking import replace_detected_spans
+from .masking import detected_span_groups, replace_detected_spans
 
 
 class OfflineEmailRecognizer(EmailRecognizer):
@@ -66,7 +66,17 @@ class PresidioRedactor:
         if not text:
             return text
         with self._lock:
-            results = self._analyzer.analyze(
-                text=text, language=self.language, score_threshold=self.score_threshold
-            )
+            results = self._analyze(text)
             return replace_detected_spans(text, results)
+
+    def detect_spans(self, text):
+        """Return merged character spans for PII, for redacting pixels at OCR word boxes."""
+        if not text:
+            return []
+        with self._lock:
+            return detected_span_groups(text, self._analyze(text))
+
+    def _analyze(self, text):
+        return self._analyzer.analyze(
+            text=text, language=self.language, score_threshold=self.score_threshold
+        )

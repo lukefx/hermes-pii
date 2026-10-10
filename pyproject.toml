@@ -12,6 +12,8 @@ dependencies = [
     "presidio-analyzer>=2.2,<3",
     "spacy>=3.8,<3.9",
     "tldextract>=5,<6",
+    "pillow>=10,<13",
+    "pytesseract>=0.3.13,<0.4",
 ]
 
 [project.entry-points."hermes_agent.plugins"]
