@@ -115,7 +115,10 @@ Office files follow the same visual path as PDF attachments:
 DOCX/XLSX → LibreOffice PDF → Poppler PNG pages → Tesseract + Presidio → blacked-out images
 ```
 
-Install LibreOffice in addition to Poppler and Tesseract. All three commands,
+No additional Python packages are required for Office support. Install
+LibreOffice in addition to the Poppler and Tesseract system tools already used
+for PDF/image processing. `uv sync` and Hermes' plugin dependency installer do
+not install these programs. All three commands,
 `soffice`, `pdftoppm`, and `tesseract`, must be available on the Hermes process'
 `PATH`. On macOS:
 
@@ -129,8 +132,21 @@ export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
 On Ubuntu:
 
 ```bash
-sudo apt-get install libreoffice-writer libreoffice-calc poppler-utils tesseract-ocr
+sudo apt-get install libreoffice-writer libreoffice-calc poppler-utils tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
 ```
+
+Verify the commands from the same environment used to launch Hermes:
+
+```bash
+soffice --version
+pdftoppm -v
+tesseract --version
+tesseract --list-langs
+```
+
+The OCR language data must match the plugin's configured language (`eng` for the
+default English configuration). Install additional Tesseract language data when
+using another language, alongside the corresponding spaCy model described above.
 
 Restart Hermes, then attach a synthetic Office file or reference it in a user
 message, for example `Summarize @file:"documents/test.docx"`. Local references
