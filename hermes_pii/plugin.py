@@ -3,6 +3,7 @@ import logging
 from threading import Lock
 
 from .attachments import is_media_content_part, sanitize_content_part
+from .office_references import expand_office_references
 
 logger = logging.getLogger(__name__)
 
@@ -45,45 +46,59 @@ class PiiPlugin:
             _warn(error)
             return text
 
-    def _redact_content(self, content):
+    def _redact_user_text(self, text, *, responses=False):
+        expanded = expand_office_references(
+            text, detect_spans=lambda value: self._get_redactor().detect_spans(value),
+            language=self._settings[0], responses=responses,
+        )
+        if isinstance(expanded, str):
+            return self._redact_text(expanded)
+        for part in expanded:
+            if part["type"] in {"text", "input_text"}:
+                part["text"] = self._redact_text(part["text"])
+        return expanded
+
+    def _redact_content(self, content, *, responses=False):
         if isinstance(content, str):
-            return self._redact_text(content)
+            return self._redact_user_text(content, responses=responses)
         if isinstance(content, list):
-            updated = list(content)
-            for index, part in enumerate(content):
-                if not isinstance(part, dict):
-                    continue
-                if is_media_content_part(part):
-                    updated[index] = sanitize_content_part(
+            updated = []
+            for part in content:
+                result = part
+                if isinstance(part, dict) and is_media_content_part(part):
+                    result = sanitize_content_part(
                         part,
                         detect_spans=lambda text: self._get_redactor().detect_spans(text),
                         language=self._settings[0],
                     )
-                elif part.get("type") in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
-                    updated[index] = {**part, "text": self._redact_text(part["text"])}
+                elif isinstance(part, dict) and part.get("type") in ("text", "input_text", "output_text") and isinstance(part.get("text"), str):
+                    text = self._redact_user_text(part["text"], responses=responses)
+                    result = text if isinstance(text, list) else {**part, "text": text}
+                updated.extend(result if isinstance(result, list) and result is not part else [result])
             return updated
         return content
 
-    def _redact_message(self, message):
+    def _redact_message(self, message, *, responses=False):
         if message.get("role") != "user" or message.get("type", "message") != "message":
             return message
         if "content" not in message:
             return message
-        return {**message, "content": self._redact_content(message["content"])}
+        return {**message, "content": self._redact_content(message["content"], responses=responses)}
 
     def llm_request(self, request, **kwargs):
         """Copy only rewritten branches, preserving shared input even after Hermes' shallow-copy fallback."""
         updated = dict(request)
-        # A string Responses input is a user prompt; instructions are preserved.
-        if isinstance(updated.get("input"), str):
-            updated["input"] = self._redact_text(updated["input"])
         for key in ("messages", "input"):
             messages = updated.get(key)
             if isinstance(messages, list):
                 updated[key] = [
-                    self._redact_message(message) if isinstance(message, dict) else message
+                    self._redact_message(message, responses=key == "input") if isinstance(message, dict) else message
                     for message in messages
                 ]
+        # Responses string input becomes a user message only when Office pages are attached.
+        if isinstance(updated.get("input"), str):
+            content = self._redact_user_text(updated["input"], responses=True)
+            updated["input"] = [{"role": "user", "content": content}] if isinstance(content, list) else content
         return {
             "request": updated,
             "source": "hermes-pii",
