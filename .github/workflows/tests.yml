@@ -35,5 +35,10 @@ jobs:
         run: uv sync --frozen
       - name: Install English model
         run: uv pip install --python .venv/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+      - name: Install Office rendering tools
+        if: matrix.python-version == '3.12'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc poppler-utils tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
       - name: Run tests
+        env:
+          HERMES_PII_OFFICE_SMOKE: ${{ matrix.python-version == '3.12' && '1' || '0' }}
         run: uv run --no-sync python -m unittest discover -s tests -v
