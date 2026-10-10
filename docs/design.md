@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-- Package dependencies install the default English spaCy model during installation.
+- Users provision the default English spaCy model in the Hermes environment.
 - Registration only installs callbacks; it does not import spaCy or load models.
 - `pre_llm_call` prepares the detector, without analyzing or appending user text.
 - `llm_request` rewrites a provider-bound copy using an explicit field whitelist.
@@ -14,8 +14,9 @@ permanent failure flag, recovery mapping, or request/result cache.
 
 ## Model loading
 
-The default English model requirement and its `[tool.uv.sources]` wheel URL are declared
-in `pyproject.toml` and pinned in `uv.lock`. Hermes PM keeps both in member snapshots.
+The default English model is provisioned separately from its GitHub release wheel.
+Hermes' dependency installer does not resolve `[tool.uv.sources]`, and the model
+has no PyPI releases. Package dependencies therefore exclude the model.
 Runtime code calls `spacy.load()` and supplies the installed pipeline to Presidio,
 avoiding its stock loader's download path. Email validation uses a bundled
 suffix snapshot with remote URLs and disk caching disabled. Custom models must
@@ -39,7 +40,7 @@ This policy deliberately allows raw PII to reach a provider on detector errors.
 - The preparation hook returns `None`; returning text would append it to the original prompt.
 - Middleware returns `{"request": ...}` without changing original history.
 - Protocol keys, roles, tool names, call IDs, schemas, and non-text fields are preserved.
-- String values inside JSON tool arguments are filtered recursively; numeric values are preserved.
+- System prompts, tool outputs and tool-call arguments are preserved; only user text is filtered.
 - Invalid detector offsets raise; overlapping spans are fully covered.
 - No presidio-anonymizer dependency: its cryptography constraint conflicts with
   Hermes' security pin, and placeholder replacement needs no encryption operator.
@@ -49,7 +50,6 @@ This policy deliberately allows raw PII to reach a provider on detector errors.
 - The optional Italian model has a non-commercial license; language accuracy needs benchmarking.
 - Multimodal content, unknown provider fields, auxiliary calls, and bypassing paths need separate coverage.
 - There is no recovery map, mandatory egress barrier, or anonymity guarantee.
-- Redacted historical tool arguments may affect replay continuity.
 
 ## Future work
 

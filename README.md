@@ -5,19 +5,26 @@ or LLM is used for detection. This is a POC, not a confidentiality guarantee.
 
 ## Installation
 
-The default English model, `en_core_web_sm` 3.8.0, is a declared package
-dependency. Installing the plugin also installs the model; no separate download
-command or spaCy training/initialization step is required.
+Install the default English model, `en_core_web_sm` 3.8.0, separately in the
+Python environment used by Hermes before enabling the plugin. Hermes admits
+named PyPI dependencies only; the model wheel is hosted on GitHub and cannot be
+installed through the plugin dependency installer. Use the interpreter from
+Hermes' managed environment (replace the path below):
 
-The wheel URL is declared in `[tool.uv.sources]`. Use Hermes/uv rather than bare
-`pip`: Hermes PM preserves the named requirement, whereas direct-URL requirements
-are omitted during dependency admission.
+```bash
+uv pip install --python /path/to/hermes/environment/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+/path/to/hermes/environment/bin/python -c "import spacy; spacy.load('en_core_web_sm')"
+```
+
+The plugin does not download models at runtime. If the model is missing,
+redaction fails open and original text is sent to the provider.
 
 For development:
 
 ```bash
 uv venv --python 3.12 .venv
 uv sync --frozen
+uv pip install --python .venv/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 ```
 
 For a directory-plugin symlink in a Hermes profile, enable the plugin through
@@ -42,8 +49,8 @@ separate license.
 ## Request flow
 
 1. `pre_llm_call` prepares one cached detector. It does not analyze or append user text.
-2. `llm_request` redacts supported text and sanitizes supported image parts in a
-   copy of the provider request.
+2. `llm_request` redacts user prompt text and sanitizes supported image parts in
+   user messages in a copy of the provider request.
 3. Hermes continues its normal execution; original conversation history is unchanged.
 
 Models load from installed packages or local directories. Runtime loading and
@@ -61,7 +68,7 @@ registration. Change them with `hermes config set`, then restart Hermes.
 | `model_name` | `en_core_web_sm` | Installed model name or local model directory |
 | `score_threshold` | `0.4` | <PERSON> detection threshold |
 
-The default model is installed automatically. To use Italian, first provision
+The default model requires separate provisioning. To use Italian, first provision
 `it_core_news_sm` 3.8.0 in the same Hermes environment. The plugin does not
 install or download it at runtime. Then set both Italian settings from the
 command line:
@@ -77,11 +84,10 @@ through. Additional/custom models must be provisioned separately before use.
 
 ## Supported payloads
 
-- Chat Completions message content and text parts.
-- Responses instructions, string/message-list input, text parts, and function outputs.
-- JSON string values in Chat/Responses tool-call arguments.
-- Inline/base64 raster images in Chat and Responses content. Tesseract OCR runs
-  locally; detected text is covered with black rectangles before the image is sent.
+- Chat Completions text in messages with `role: user`.
+- Responses string input and text in input messages with `role: user`.
+- Inline/base64 raster images in Chat and Responses user messages. Tesseract OCR
+  runs locally; detected text is covered with black rectangles before the image is sent.
 - PDFs attached through Hermes' `pdf.attach` flow, which renders pages to images,
   are covered by the same image path. Files read through Hermes' `@file` context
   flow are covered after their extracted text enters the provider request.
@@ -104,9 +110,12 @@ transcribe a synthetic email in it; the expected result is that it cannot read
 the blacked-out address. Check `hermes -p <profile> plugins list` to confirm the
 plugin is enabled in that profile.
 
-Keys, roles, tool names, call IDs, numeric values, schemas, and ordinary
-non-sensitive protocol fields are preserved. Names, places, organizations,
-email, phones, IBANs, cards, and IP addresses are recognized in supported text
+System/developer prompts, Responses instructions, assistant messages, tool-call
+arguments, and tool outputs are preserved and never analyzed. Messages without
+an explicit user role are also preserved. Keys, roles, tool names, call IDs,
+numeric values, schemas, metadata, and unlisted provider fields are preserved.
+Names, places, organizations, email, phones, IBANs, cards, and IP addresses are
+recognized in supported text
 and OCR output; accuracy and false positives depend on context and OCR quality.
 An OCR false negative can leave PII in an image, so this remains a best-effort
 filter rather than a confidentiality guarantee.

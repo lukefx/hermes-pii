@@ -1,5 +1,5 @@
 name: hermes-pii
-version: 0.1.0.dev1
+version: 0.1.0.dev2
 description: "Offline Presidio text filtering and local OCR image redaction. Text passes through on detector errors; uninspectable attachments are omitted. Not a privacy guarantee."
 provides_tools: []
 provides_hooks:
@@ -15,7 +15,7 @@ config_schema:
   model_name:
     type: str
     default: en_core_web_sm
-    description: "Installed spaCy model or local directory; default model is provisioned at installation"
+    description: "Installed spaCy model or local directory; provision separately before enabling"
   score_threshold:
     type: float
     default: 0.4

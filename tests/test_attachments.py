@@ -77,6 +77,19 @@ class AttachmentTests(unittest.TestCase):
         self.assertNotIn("secret-file-id", repr(sent))
         self.assertNotIn("private-audio-payload", repr(sent))
 
+    def test_non_user_attachments_are_preserved_without_inspection(self):
+        plugin = PiiPlugin()
+        messages = [
+            {"role": role, "content": [{"type": "input_image", "image_url": "opaque"}]}
+            for role in ("system", "developer", "assistant", "tool")
+        ] + [{"content": [{"type": "input_file", "file_id": "opaque"}]}]
+        for field in ("messages", "input"):
+            with self.subTest(field=field):
+                with patch("hermes_pii.plugin.sanitize_content_part") as sanitize:
+                    sent = plugin.llm_request({field: messages})["request"]
+                sanitize.assert_not_called()
+                self.assertEqual(sent[field], messages)
+
     def test_detector_initialization_error_omits_image(self):
         from hermes_pii.attachments import OCRWord
 
