@@ -18,6 +18,13 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+      - name: Check code complexity
+        if: matrix.python-version == '3.12'
+        uses: moznion/cccc-action@f766d74cf323cd9085c2c9263cebdf1ec1ebfb19 # v1.1.1
+        with:
+          version: v1.8.0
+          path: hermes_pii tests
+          args: --max-cognitive 40 --max-cyclomatic 40 --table
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
