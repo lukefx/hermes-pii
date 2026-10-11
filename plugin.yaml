@@ -1,5 +1,5 @@
 name: hermes-pii
-version: 0.0.1
+version: 0.0.2
 description: "Offline Presidio text filtering and local OCR image, Word, and Excel redaction. Text passes through on detector errors; uninspectable attachments are omitted. Not a privacy guarantee."
 provides_tools: []
 provides_hooks:

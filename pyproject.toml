@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-pii"
-version = "0.0.1"
+version = "0.0.2"
 description = "Local Presidio PII redaction plugin for Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.11"
