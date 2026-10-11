@@ -93,7 +93,7 @@ class ToolResultTests(unittest.TestCase):
             with self.subTest(field=field):
                 request = {field: [message]}
                 original = deepcopy(request)
-                plugin = PiiPlugin(language="it", model_name="it_core_news_sm")
+                plugin = PiiPlugin(language="it", model_name=os.environ.get("HERMES_PII_ITALIAN_MODEL", "it_core_news_sm"))
                 with patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden")):
                     sent = plugin.llm_request(request)["request"]
                 received = []
