@@ -5,8 +5,12 @@ import base64
 import binascii
 import logging
 import re
+from contextlib import closing
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import PurePath
+
+from .office import MAX_OFFICE_BYTES, OFFICE_EXTENSIONS, render_office_pages
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +45,15 @@ def is_media_content_part(part):
 
 
 def sanitize_content_part(part, *, detect_spans, language="en"):
-    """Redact raster image PII; replace opaque or unsupported media parts with safe text."""
+    """Return a sanitized part or Office page list; omit uninspectable media."""
     part_type = part.get("type")
+    if part_type in {"file", "input_file"}:
+        try:
+            return _sanitize_office_part(part, detect_spans=detect_spans, language=language)
+        except Exception as error:
+            logger.warning("PII Office attachment omitted after local inspection failed (%s)", type(error).__name__)
+            text_type = "input_text" if part_type == "input_file" else "text"
+            return {"type": text_type, "text": _OMITTED_ATTACHMENT}
     if part_type in _UNSUPPORTED_MEDIA_TYPES:
         logger.warning("PII attachment omitted because local sanitization is unavailable")
         return {"type": "text", "text": _OMITTED_ATTACHMENT}
@@ -61,6 +72,35 @@ def sanitize_content_part(part, *, detect_spans, language="en"):
     else:
         logger.warning("PII image attachment omitted because its data was not locally inspectable")
     return {"type": "text", "text": _OMITTED_ATTACHMENT}
+
+
+def _sanitize_office_part(part, *, detect_spans, language):
+    spec = part.get("file") if part["type"] == "file" else part
+    if not isinstance(spec, dict):
+        raise ValueError("invalid Office file part")
+    filename, encoded = spec.get("filename"), spec.get("file_data")
+    if not isinstance(filename, str) or not isinstance(encoded, str):
+        raise ValueError("Office files require an inline payload and filename")
+    extension = PurePath(filename).suffix.lower()
+    if extension not in OFFICE_EXTENSIONS:
+        raise ValueError("unsupported Office format")
+    if encoded.startswith("data:"):
+        header, encoded = encoded.split(",", 1)
+        if not header.endswith(";base64"):
+            raise ValueError("Office data URLs must be base64 encoded")
+    raw = _decode_base64(encoded, max_bytes=MAX_OFFICE_BYTES)
+    parts = []
+    with closing(render_office_pages(raw, extension)) as pages:
+        for page in pages:
+            safe, _changed = sanitize_image_bytes(page, detect_spans=detect_spans, language=language)
+            url = "data:image/png;base64," + base64.b64encode(safe).decode("ascii")
+            if part["type"] == "input_file":
+                parts.append({"type": "input_image", "image_url": url})
+            else:
+                parts.append({"type": "image_url", "image_url": {"url": url}})
+    if not parts:
+        raise ValueError("Office conversion produced no pages")
+    return parts
 
 
 def _sanitize_image_part(part, *, detect_spans, language):
@@ -149,11 +189,14 @@ def sanitize_image_bytes(raw, *, detect_spans, language="en"):
     return output.getvalue(), True
 
 
-def _decode_base64(encoded):
-    if len(encoded) > ((_MAX_IMAGE_BYTES + 2) // 3) * 4:
+def _decode_base64(encoded, *, max_bytes=_MAX_IMAGE_BYTES):
+    if len(encoded) > ((max_bytes + 2) // 3) * 4:
         raise ValueError("image exceeds local inspection size limit")
     try:
-        return base64.b64decode(encoded, validate=True)
+        raw = base64.b64decode(encoded, validate=True)
+        if len(raw) > max_bytes:
+            raise ValueError("attachment exceeds local inspection size limit")
+        return raw
     except (binascii.Error, ValueError) as error:
         raise ValueError("invalid image data") from error
 

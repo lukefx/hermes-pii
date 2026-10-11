@@ -72,7 +72,7 @@ class AttachmentTests(unittest.TestCase):
 
         sent = plugin.llm_request(request=request)["request"]
         parts = sent["input"][0]["content"]
-        self.assertEqual([part["type"] for part in parts], ["text", "text", "text"])
+        self.assertEqual([part["type"] for part in parts], ["text", "input_text", "text"])
         self.assertNotIn("files.example", repr(sent))
         self.assertNotIn("secret-file-id", repr(sent))
         self.assertNotIn("private-audio-payload", repr(sent))
