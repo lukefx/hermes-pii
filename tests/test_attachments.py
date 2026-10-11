@@ -77,11 +77,11 @@ class AttachmentTests(unittest.TestCase):
         self.assertNotIn("secret-file-id", repr(sent))
         self.assertNotIn("private-audio-payload", repr(sent))
 
-    def test_non_user_attachments_are_preserved_without_inspection(self):
+    def test_instruction_and_assistant_attachments_are_preserved_without_inspection(self):
         plugin = PiiPlugin()
         messages = [
             {"role": role, "content": [{"type": "input_image", "image_url": "opaque"}]}
-            for role in ("system", "developer", "assistant", "tool")
+            for role in ("system", "developer", "assistant")
         ] + [{"content": [{"type": "input_file", "file_id": "opaque"}]}]
         for field in ("messages", "input"):
             with self.subTest(field=field):
@@ -89,6 +89,22 @@ class AttachmentTests(unittest.TestCase):
                     sent = plugin.llm_request({field: messages})["request"]
                 sanitize.assert_not_called()
                 self.assertEqual(sent[field], messages)
+
+    def test_tool_result_media_passes_through_attachment_sanitization(self):
+        for field, message, key in (
+            ("messages", {"role": "tool", "tool_call_id": "pdf-read"}, "content"),
+            ("input", {"type": "function_call_output", "call_id": "pdf-read"}, "output"),
+        ):
+            request = {field: [{**message, key: [
+                {"type": "input_image", "image_url": "https://files.example/private.png"},
+            ]}]}
+            original = deepcopy(request)
+            sent = PiiPlugin().llm_request(request)["request"][field][0]
+            self.assertIn("Attachment omitted", sent[key][0]["text"])
+            self.assertNotIn("files.example", repr(sent))
+            self.assertEqual(request, original)
+            for name, value in message.items():
+                self.assertEqual(sent[name], value)
 
     def test_detector_initialization_error_omits_image(self):
         from hermes_pii.attachments import OCRWord

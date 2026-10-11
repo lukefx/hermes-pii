@@ -100,22 +100,22 @@ class PluginTests(unittest.TestCase):
         sent = ctx.middleware["llm_request"](request=request)["request"]
         self.assertEqual(sent["instructions"], request["instructions"])
         self.assertNotIn("user@example.com", sent["input"][0]["content"][0]["text"])
-        self.assertEqual(sent["input"][1], request["input"][1])
+        self.assertNotIn("user@example.com", sent["input"][1]["output"])
+        self.assertIn("<EMAIL_ADDRESS>", sent["input"][1]["output"])
         self.assertEqual(sent["input"][1]["call_id"], "call_private@example.com")
 
 
-    def test_only_user_prompts_are_analyzed(self):
+    def test_instructions_assistant_messages_and_tool_arguments_are_preserved(self):
         from unittest.mock import patch
         from hermes_pii.plugin import PiiPlugin
         plugin = PiiPlugin()
         text = "Contact private@example.com"
         excluded = [
             {"role": role, "content": text}
-            for role in ("system", "developer", "assistant", "tool")
+            for role in ("system", "developer", "assistant")
         ] + [
             {"content": text},
             {"type": "function_call", "arguments": text},
-            {"type": "function_call_output", "output": text},
         ]
         for field in ("messages", "input"):
             with self.subTest(field=field):

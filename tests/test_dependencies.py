@@ -1,4 +1,4 @@
-"""Regression checks for the Hermes cryptography dependency conflict."""
+"""Regression checks for dependencies admitted into Hermes' workspace."""
 from pathlib import Path
 import tomllib
 import unittest
@@ -7,6 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DependencyTests(unittest.TestCase):
+    def test_plugin_does_not_depend_on_its_workspace_host(self):
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        requirements = list(metadata["project"]["dependencies"])
+        for group in metadata.get("dependency-groups", {}).values():
+            requirements.extend(item for item in group if isinstance(item, str))
+        self.assertFalse(any(item.startswith("hermes-agent") for item in requirements))
+
     def test_default_model_requires_manual_provisioning(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
         self.assertFalse(any("en-core-web-sm" in item for item in metadata["project"]["dependencies"]))
