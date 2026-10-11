@@ -613,7 +613,7 @@ wheels = [
 
 [[package]]
 name = "hermes-pii"
-version = "0.1.0.dev2"
+version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "pillow" },
