@@ -11,7 +11,8 @@ class PluginContext:
         self.middleware = {}
 
     def get_config(self, key, default=None):
-        return default
+        # Legacy-host fixtures opt in explicitly; strict compatibility is tested separately.
+        return "permissive" if key == "error_policy" else default
 
     def register_hook(self, name, callback):
         self.hooks[name] = callback
@@ -62,7 +63,7 @@ class PluginTests(unittest.TestCase):
         ctx = PluginContext()
         register(ctx)
         self.assertIn("pre_llm_call", ctx.hooks)
-        self.assertIn("llm_request", ctx.middleware)
+        self.assertIn("llm_execution", ctx.middleware)
         text = "Mi chiamo Mario Rossi, email mario.rossi@example.com."
         request = {"model": "local-test", "stream": True, "messages": [
             {"role": "system", "content": "Rispondi in italiano."},
@@ -71,12 +72,11 @@ class PluginTests(unittest.TestCase):
         original = deepcopy(request)
         # Returning redacted text here would APPEND it, leaving the raw prompt.
         self.assertIsNone(ctx.hooks["pre_llm_call"](user_message=text, session_id="synthetic", future_field=True))
-        update = ctx.middleware["llm_request"](request=request, session_id="synthetic")
         sent = []
-        def local_provider(**kwargs):
+        def local_provider(kwargs):
             sent.append(kwargs)
             return {"content": "Risposta di test"}
-        result = local_provider(**update["request"])
+        result = ctx.middleware["llm_execution"](request, local_provider, session_id="synthetic")
         self.assertEqual(result["content"], "Risposta di test")
         self.assertNotIn("Mario Rossi", repr(sent))
         self.assertNotIn("mario.rossi@example.com", repr(sent))
@@ -97,7 +97,7 @@ class PluginTests(unittest.TestCase):
                 {"type": "function_call_output", "call_id": "call_private@example.com", "output": "Contatto user@example.com"},
             ],
         }
-        sent = ctx.middleware["llm_request"](request=request)["request"]
+        sent = ctx.middleware["llm_execution"](request, lambda filtered: filtered)
         self.assertEqual(sent["instructions"], request["instructions"])
         self.assertNotIn("user@example.com", sent["input"][0]["content"][0]["text"])
         self.assertNotIn("user@example.com", sent["input"][1]["output"])
@@ -141,7 +141,7 @@ class PluginTests(unittest.TestCase):
         from hermes_pii.plugin import PiiPlugin
         text = "Contact test@example.com."
         request = {"messages": [{"role": "user", "content": text}]}
-        plugin = PiiPlugin(model_name="absent_model_for_offline_test")
+        plugin = PiiPlugin(model_name="absent_model_for_offline_test", error_policy="permissive")
         with patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden")):
             with self.assertLogs("hermes_pii.plugin", level="WARNING") as logs:
                 for _ in range(2):
@@ -150,9 +150,9 @@ class PluginTests(unittest.TestCase):
                     self.assertEqual(sent["source"], "hermes-pii")
                     self.assertEqual(
                         sent["reason"],
-                        "Local PII filtering with local attachment sanitization",
+                        "WARNING: permissive PII policy sent unfiltered text",
                     )
-        self.assertEqual(len(logs.output), 2)
+        self.assertEqual(len(logs.output), 1)
         for record in logs.records:
             self.assertIsNone(record.exc_info)
             self.assertIn("OSError", record.getMessage())

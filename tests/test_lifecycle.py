@@ -35,7 +35,7 @@ class LifecycleTests(unittest.TestCase):
                     self.assertEqual(future.result(timeout=10)["request"], request)
         self.assertEqual(factory.call_count, 1)
 
-    def test_transient_failure_preserves_text_and_next_call_recovers(self):
+    def test_transient_failure_blocks_request_and_next_call_recovers(self):
         text = "Email alice@example.com."
         plugin = PiiPlugin()
         with patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden")):
@@ -55,11 +55,11 @@ class LifecycleTests(unittest.TestCase):
                 with self.assertLogs("hermes_pii.plugin", level="WARNING") as logs:
                     first = plugin.llm_request(request=request)
                 second = plugin.llm_request(request=request)
-        self.assertEqual(first["request"], request)
+        self.assertEqual(first["request"], {"_hermes_pii_blocked": True})
         self.assertNotIn("alice@example.com", repr(second["request"]))
         self.assertEqual(request["messages"][0]["content"], text)
         self.assertNotIn(text, repr(logs.output))
-        self.assertIn("original text", logs.output[0])
+        self.assertIn("blocks this request", logs.output[0])
         self.assertNotIn("until process restart", logs.output[0])
 
 

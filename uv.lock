@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -355,7 +355,9 @@ wheels = [
 name = "hermes-pii"
 version = "0.0.2"
 source = { editable = "." }
-dependencies = [
+
+[package.dev-dependencies]
+dev = [
     { name = "pillow" },
     { name = "presidio-analyzer" },
     { name = "pytesseract" },
@@ -364,7 +366,9 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [
+
+[package.metadata.requires-dev]
+dev = [
     { name = "pillow", specifier = ">=10,<13" },
     { name = "presidio-analyzer", specifier = ">=2.2,<3" },
     { name = "pytesseract", specifier = ">=0.3.13,<0.4" },

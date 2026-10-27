@@ -1,13 +1,18 @@
 name: hermes-pii
 version: 0.0.2
-description: "Offline Presidio text filtering and local OCR image, Word, and Excel redaction. Text passes through on detector errors; uninspectable attachments are omitted. Not a privacy guarantee."
+python_runtime: external
+description: "Offline PII filtering at the execution boundary. Strict detector-error handling requires Hermes MiddlewareAbort support; permissive mode explicitly allows unfiltered text. Not a privacy guarantee."
 provides_tools: []
 provides_hooks:
   - pre_llm_call
 provides_middleware:
-  - llm_request
+  - llm_execution
 requires_env: []
 config_schema:
+  error_policy:
+    type: str
+    default: strict
+    description: "strict aborts on detector errors and requires host MiddlewareAbort support; permissive explicitly sends unfiltered text with a warning"
   language:
     type: str
     default: en
@@ -15,7 +20,7 @@ config_schema:
   model_name:
     type: str
     default: en_core_web_sm
-    description: "Installed spaCy model or local directory; provision separately before enabling"
+    description: "Pinned en_core_web_sm/it_core_news_sm 3.8.0, or existing absolute model directory; provision with hermes pii install"
   score_threshold:
     type: float
     default: 0.4

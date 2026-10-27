@@ -25,7 +25,7 @@ class ScaffoldTests(unittest.TestCase):
             context = PluginContext()
             self.assertIsNone(module.register(context))
             self.assertIn("pre_llm_call", context.hooks)
-            self.assertIn("llm_request", context.middleware)
+            self.assertIn("llm_execution", context.middleware)
         finally:
             for key in list(sys.modules):
                 if key == name or key.startswith(name + "."):

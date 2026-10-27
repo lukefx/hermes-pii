@@ -24,7 +24,7 @@ jobs:
         with:
           version: v1.8.0
           path: hermes_pii tests
-          args: --max-cognitive 40 --max-cyclomatic 40 --table
+          args: --max-cognitive 19 --max-cyclomatic 19 --table
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python-version }}

@@ -56,12 +56,12 @@ class ToolResultTests(unittest.TestCase):
                     self.assertIn("<PERSON>", filtered)
                     self.assertIn("<PHONE_NUMBER>", filtered)
 
-    def test_tool_result_failure_is_omitted_without_logging_content(self):
+    def test_tool_result_failure_blocks_request_without_logging_content(self):
         with patch.object(self.plugin, "_get_redactor", side_effect=RuntimeError(TEXT)):
             with self.assertLogs("hermes_pii.plugin", level="WARNING") as logs:
                 sent = self.plugin.llm_request({"messages": [{"role": "tool", "content": TEXT}]})
         self.assertNotIn(TEXT, repr(sent))
-        self.assertIn("Tool result omitted", repr(sent))
+        self.assertEqual(sent["request"], {"_hermes_pii_blocked": True})
         self.assertNotIn(TEXT, str(logs.output))
         recovered = self.plugin.llm_request({"messages": [{"role": "tool", "content": TEXT}]})
         self.assertIn("<PHONE_NUMBER>", repr(recovered))

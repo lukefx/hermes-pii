@@ -150,9 +150,28 @@ def _sanitize_image_part(part, *, detect_spans, language):
     return updated, True
 
 
+def _cover_detected_spans(image, spans, words):
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image)
+    margin = max(2, round(min(image.size) * 0.002))
+    redacted = 0
+    for start, end, _entity_type in spans:
+        matching = [word for word in words if word.text_start < end and word.text_end > start]
+        if not matching:
+            raise ValueError("PII span did not map to OCR word boxes")
+        left = max(0, min(word.left for word in matching) - margin)
+        top = max(0, min(word.top for word in matching) - margin)
+        right = min(image.width - 1, max(word.right for word in matching) + margin)
+        bottom = min(image.height - 1, max(word.bottom for word in matching) + margin)
+        draw.rectangle((left, top, right, bottom), fill="black")
+        redacted += 1
+    return redacted
+
+
 def sanitize_image_bytes(raw, *, detect_spans, language="en"):
     """Black out OCR boxes for every detected span; return ``(PNG bytes, changed)``."""
-    from PIL import Image, ImageDraw, ImageOps
+    from PIL import Image, ImageOps
 
     if len(raw) > _MAX_IMAGE_BYTES:
         raise ValueError("image exceeds local inspection size limit")
@@ -168,21 +187,7 @@ def sanitize_image_bytes(raw, *, detect_spans, language="en"):
     if not spans:
         return raw, False
 
-    draw = ImageDraw.Draw(image)
-    margin = max(2, round(min(image.size) * 0.002))
-    redacted = 0
-    for start, end, _entity_type in spans:
-        matching = [word for word in words if word.text_start < end and word.text_end > start]
-        if not matching:
-            raise ValueError("PII span did not map to OCR word boxes")
-        left = max(0, min(word.left for word in matching) - margin)
-        top = max(0, min(word.top for word in matching) - margin)
-        right = min(image.width - 1, max(word.right for word in matching) + margin)
-        bottom = min(image.height - 1, max(word.bottom for word in matching) + margin)
-        draw.rectangle((left, top, right, bottom), fill="black")
-        redacted += 1
-
-    if not redacted:
+    if not _cover_detected_spans(image, spans, words):
         return raw, False
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
