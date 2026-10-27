@@ -105,14 +105,17 @@ class OfficeTests(unittest.TestCase):
                     pages = sent[field][0]["content"]
                     self.assertEqual(len(pages), 2)
                     for page in pages:
-                        self.assertEqual(page["type"], "input_image" if responses else "image_url")
-                        url = page["image_url"] if responses else page["image_url"]["url"]
-                        with Image.open(BytesIO(base64.b64decode(url.split(",", 1)[1]))) as image:
-                            self.assertEqual(image.getpixel((50, 20)), (0, 0, 0))
-                            self.assertEqual(image.getpixel((110, 50)), (255, 255, 255))
+                        self.assert_filtered_page(page, responses)
                     self.assertEqual(request, original)
                     self.assertNotIn(encoded, repr(sent))
                     self.assertNotIn("alice@example.com", repr(sent))
+
+    def assert_filtered_page(self, page, responses):
+        self.assertEqual(page["type"], "input_image" if responses else "image_url")
+        url = page["image_url"] if responses else page["image_url"]["url"]
+        with Image.open(BytesIO(base64.b64decode(url.split(",", 1)[1]))) as image:
+            self.assertEqual(image.getpixel((50, 20)), (0, 0, 0))
+            self.assertEqual(image.getpixel((110, 50)), (255, 255, 255))
 
     def test_conversion_or_later_page_failure_omits_whole_document(self):
         def broken_pages(raw, extension):

@@ -106,7 +106,7 @@ class AttachmentTests(unittest.TestCase):
             for name, value in message.items():
                 self.assertEqual(sent[name], value)
 
-    def test_detector_initialization_error_omits_image(self):
+    def test_detector_initialization_error_omits_image_even_in_permissive_mode(self):
         from hermes_pii.attachments import OCRWord
 
         encoded = base64.b64encode(white_png()).decode("ascii")
@@ -114,7 +114,7 @@ class AttachmentTests(unittest.TestCase):
             "type": "input_image",
             "image_url": f"data:image/png;base64,{encoded}",
         }]}]}
-        plugin = PiiPlugin()
+        plugin = PiiPlugin(error_policy="permissive")
         with (
             patch.object(plugin, "_get_redactor", side_effect=RuntimeError("synthetic failure")),
             patch(

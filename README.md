@@ -1,217 +1,197 @@
 # hermes-pii
 
-Local PII detection for Hermes Agent using `<PERSON>` and spaCy. No cloud service
-or LLM is used for detection. This is a POC, not a confidentiality guarantee.
+Local PII detection for Hermes Agent using Presidio Analyzer and spaCy. Detection
+runs on your machine, in a private Python environment. No cloud detector or LLM
+is used. This is a POC, not a confidentiality guarantee.
 
 ## Installation
 
-Enable the plugin first so Hermes provisions its managed Python environment,
-then install the default English model, `en_core_web_sm` 3.8.0, separately in
-that environment before starting a chat. For a local checkout and the default
-Hermes home (`~/.hermes`):
-
 ```bash
-mkdir -p "$HOME/.hermes/plugins"
-# Run from the root of this checkout; skip if this link already exists.
-ln -s "$PWD" "$HOME/.hermes/plugins/hermes-pii"
-env -u UV_NATIVE_TLS UV_SYSTEM_CERTS=true hermes plugins enable hermes-pii
-hermes plugins list --plain --no-bundled
+hermes plugins install hermes-pii
+hermes config set plugins.entries.hermes-pii.settings.language en
+hermes config set plugins.entries.hermes-pii.settings.model_name en_core_web_sm
+hermes pii install
+hermes pii status
 ```
 
-Hermes admits
-named PyPI dependencies only; the model wheel is hosted on GitHub and cannot be
-installed through the plugin dependency installer. Use the interpreter from
-Hermes' current managed environment (replace the path below). With the managed
-layout under `~/.hermes`, its path is recorded in
-`~/.hermes/installs/<install-id>/facts.json` at
-`packages.venv.environment`; append `/bin/python`. Select the record for the
-Hermes installation you launch, rather than an old environment directory.
+The native `pii` command requires an enabled plugin. Accept the normal installer's
+enable prompt; if you deliberately installed it disabled, run
+`hermes plugins enable hermes-pii` first. Registering the plugin does not import
+NLP packages or load a model. No chat or external LLM call is needed for setup.
+
+**Release prerequisite:** a bare plugin name resolves to the reviewed catalog
+commit, not this working tree. Publishing a new revision and updating the
+catalog pin are separate maintainer actions; otherwise the first command still
+installs the previously cataloged implementation.
+
+`hermes pii install` creates a Python 3.12 environment beneath the active
+profile's `plugin-data/hermes-pii/runtime` directory, synchronizes hash-locked
+Python requirements, verifies and installs the selected official model wheel,
+and checks synthetic offline redaction before publishing an atomic runtime
+receipt. Hermes' own Python environment receives no NLP dependencies. The
+plugin declares `python_runtime: external` and has no package runtime dependencies.
+`uv` must be available to the installer; it may provision Python during this
+explicit command. Network access is needed for uncached installation only.
+
+Supported packaged models are `en_core_web_sm` and `it_core_news_sm`, both
+3.8.0, downloaded from the official spaCy GitHub releases with SHA-256 pins.
+Alternatively, configure an existing absolute spaCy model-data directory. It is
+copied into a generation and checked against the selected language. Arbitrary
+model URLs and language/model mismatches are rejected. There are no model or
+package downloads during request processing.
+
+Repeated installation reuses an identical healthy runtime. Failed provisioning
+does not replace the previous working receipt. Generations are profile-local;
+Hermes environment rebuilds do not delete the private environment or model.
+Restart Hermes after changing settings or reprovisioning a running session.
+
+**Strict-host compatibility is separate from runtime readiness.** The default
+`strict` policy requires `hermes_cli.middleware.MiddlewareAbort`. On an
+unsupported host registration exposes only the installer/status CLI and emits a
+warning: it does **not** register a functioning privacy filter or silently switch
+to permissive mode. `status` reports readiness and compatibility separately;
+a ready model does not establish active protection. Keep the plugin disabled in
+your regular profile until host compatibility and detector readiness are
+verified. Use a disposable `HERMES_HOME` for setup experiments on unsupported
+hosts. See [Strict host integration](docs/strict-host.md).
+
+For corporate system certificate trust, retain TLS verification:
 
 ```bash
-env -u UV_NATIVE_TLS UV_SYSTEM_CERTS=true uv pip install --python /path/to/hermes/environment/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-/path/to/hermes/environment/bin/python -c "import spacy; spacy.load('en_core_web_sm')"
-/path/to/hermes/environment/bin/python -c "from hermes_pii.redactor import PresidioRedactor; result = PresidioRedactor().redact('Contact John Smith at john.smith@example.com.'); print(result); assert 'John Smith' not in result and 'john.smith@example.com' not in result"
+env -u UV_NATIVE_TLS UV_SYSTEM_CERTS=true hermes pii install
 ```
 
-Restart Hermes after provisioning the model. Enabling plugins or updating Hermes
-can create a new managed environment; check its current interpreter and repeat
-model provisioning if needed. A successful plugin enable does not verify that
-the NLP model is installed. The certificate environment variables above use the
-system trust store for `uv` without disabling TLS verification.
+### Development checkout
 
-The plugin does not download models at runtime. If the model is missing,
-redaction fails open and original text is sent to the provider.
-
-For development:
+Use a directory link instead of pretending the catalog contains uncommitted code:
 
 ```bash
-uv venv --python 3.12 .venv
+mkdir -p "${HERMES_HOME:-$HOME/.hermes}/plugins"
+ln -s "$PWD" "${HERMES_HOME:-$HOME/.hermes}/plugins/hermes-pii"
+hermes plugins enable hermes-pii
+```
+
+Skip the link if it already exists, and use a disposable `HERMES_HOME` for tests.
+Do not install both a directory plugin and a separate pip-discovered entry point.
+The project environment is development-only, not the environment used by the
+native installed filter:
+
+```bash
 uv sync --frozen
-# Install the host separately for tests using agent.context_references.
+# Install host integration-test dependencies into the development environment only.
 uv pip install --python .venv/bin/python 'hermes-agent>=0.19.0'
 uv pip install --python .venv/bin/python https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 ```
 
-For a directory-plugin symlink in a Hermes profile, enable the plugin through
-Hermes so dependency admission provisions its managed environment:
-
-```bash
-env -u UV_NATIVE_TLS UV_SYSTEM_CERTS=true hermes -p <profile> plugins enable hermes-pii
-```
-
-Named profiles have separate plugin directories. Check the target profile with
-`hermes -p <profile> plugins list`. If it does not show `hermes-pii`, link this
-checkout into that profile's `$HERMES_HOME/plugins/hermes-pii` before enabling
-it. Restart Hermes after installing, updating code, or changing settings. The
-project `.venv` is separate from Hermes' managed environment. Do not install the
-plugin both as a directory plugin and as an independently discovered pip entry
-point.
-
-### Local enable fails with a workspace dependency error
-
-If `hermes plugins enable hermes-pii` reports
-`hermes-agent is included as a workspace member, but is missing an entry in tool.uv.sources`,
-update this checkout and retry the enable command. Older revisions included
-`hermes-agent` in the development dependency group. Hermes copies directory
-plugins into its own `uv` workspace, where that declaration conflicts with the
-host package. The dependency has been removed from the plugin metadata;
-development and CI install Hermes separately for the integration tests that use
-its context-reference preprocessing. Do not add `hermes-agent` back to this
-plugin's dependency groups or add a workspace-only source to the standalone
-checkout. Admission failure leaves the active environment and plugin enable
-configuration unchanged.
-
-**Model licenses:** `en_core_web_sm` is MIT. The optional `it_core_news_sm` model
-is CC BY-NC-SA 3.0; verify that its terms fit your use. The spaCy library has a
-separate license.
-
-## Request flow
-
-1. `pre_llm_call` prepares one cached detector. It does not analyze or append user text.
-2. `llm_request` redacts user prompt text and tool-result text, and sanitizes
-   supported image parts in those messages in a copy of the provider request.
-3. Hermes continues its normal execution; original conversation history is unchanged.
-
-Models load from installed packages or local directories. Runtime loading and
-analysis never download models. Email recognition uses a bundled, offline suffix
-snapshot. Overlapping detections are replaced across their full union.
+**Model licenses:** `en_core_web_sm` is MIT. `it_core_news_sm` is CC BY-NC-SA 3.0;
+verify that its non-commercial terms fit your use. spaCy has a separate license.
 
 ## Settings
 
-Settings live under `plugins.entries.hermes-pii.settings` and are read once at
-registration. Change them with `hermes config set`, then restart Hermes.
+Settings live under `plugins.entries.hermes-pii.settings`. Change them with
+`hermes config set`. CLI commands read the current configuration; a running chat
+captures its settings at registration and must be restarted after changes.
 
 | Key | Default | Purpose |
 |---|---|---|
 | `language` | `en` | Language supported by the selected model |
-| `model_name` | `en_core_web_sm` | Installed model name or local model directory |
-| `score_threshold` | `0.4` | <PERSON> detection threshold |
+| `model_name` | `en_core_web_sm` | Pinned packaged model or existing absolute model-data directory |
+| `score_threshold` | `0.4` | Presidio confidence threshold, from 0 to 1 |
+| `error_policy` | `strict` | `strict` blocks detector errors on compatible hosts; `permissive` explicitly sends unfiltered text on failure |
 
-The default model requires separate provisioning. To use Italian, first provision
-`it_core_news_sm` 3.8.0 in the same Hermes environment. The plugin does not
-install or download it at runtime. Then set both Italian settings from the
-command line:
+For Italian, subject to the model's non-commercial license:
 
 ```bash
 hermes config set plugins.entries.hermes-pii.settings.language it
 hermes config set plugins.entries.hermes-pii.settings.model_name it_core_news_sm
+hermes pii install
+hermes pii status
 ```
 
-Restart Hermes after changing settings. If the selected model is not installed,
-initialization fails and the plugin's fail-open policy passes original text
-through. Additional/custom models must be provisioned separately before use.
+Set language and model together. After a language/model change, the old receipt
+is not used for the new configuration: rerun `hermes pii install`. Named profiles
+have separate settings and runtimes; use the same `hermes -p <profile>` prefix
+for installation, configuration, provisioning, and status commands.
 
-### Keep the Italian model across managed environment rebuilds
+## Request flow and local data
 
-Models installed only into a managed virtual environment can disappear when
-Hermes creates a new environment. For a persistent local model, install the
-model wheel without dependencies into plugin data, then configure spaCy's model
-data directory directly. The plugin's managed environment supplies spaCy:
+1. The stdlib-only bootstrap registers the native `pii` CLI before NLP provisioning.
+2. On compatible hosts, `pre_llm_call` prepares one cached private worker and a
+   synthetic readiness check. It never analyzes or appends the user's prompt.
+3. `llm_execution` rewrites a selective copy of supported provider fields
+   immediately before `next_call`. The private Python worker performs detection,
+   masking, image OCR, and Office conversion over local stdio IPC.
+4. Strict detector failures are converted to the host's terminal policy-abort
+   signal. Successful inspection continues normal execution. Original history
+   and source attachments are unchanged.
 
-```bash
-env -u UV_NATIVE_TLS UV_SYSTEM_CERTS=true uv pip install --no-deps \
-  --target "$HOME/.hermes/plugin-data/hermes-pii/models" \
-  https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl
-hermes config set plugins.entries.hermes-pii.settings.language it
-hermes config set plugins.entries.hermes-pii.settings.model_name \
-  "$HOME/.hermes/plugin-data/hermes-pii/models/it_core_news_sm/it_core_news_sm-3.8.0"
-```
+`llm_request()` remains an internal transformation helper, not registered request
+middleware. Ordinary request-middleware exceptions fail open in Hermes; strict
+enforcement belongs to the verified execution contract instead. Registration
+failure or a disabled plugin is not an egress barrier.
 
-For a named profile, use that profile's plugin-data directory and run configuration
-commands with `hermes -p <profile>`. Fully restart the desktop backend and gateway
-after updating plugin code or configuration; opening a new chat alone does not
-reload Python modules or settings held by an existing backend process.
+The parent and worker exchange raw supported text and attachments through pipes
+on the same machine, not a network service. There is no remote detection fallback.
+Worker stderr is discarded; warnings contain exception classes, never payloads,
+exception messages, or tracebacks. No recovery mapping or result cache is kept.
+Temporary Office files, rendered PDFs, and page images are cleaned after use.
+The parent owns each worker's temporary root and, on POSIX, its process group;
+timeout or closure cancels the worker and converter/OCR descendants before
+removing that root. Default IPC deadlines are 120 seconds for text and 640 seconds
+for attachments, including model startup and the supported per-page OCR budget.
+Explicit client deadlines are honored unchanged.
+Private environments, copied model data, and installation receipts remain on disk.
+This process separation is not an operating-system sandbox.
 
-From this checkout, test a new CLI session against the real configured provider:
-
-```bash
-hermes chat --cli --oneshot -Q --max-turns 4 --run-budget 90 \
-  -q 'Read tests/fixtures/pii-italian.pdf with read_file and quote its complete text. Do not use other tools.'
-```
-
-The answer should contain `<PERSON>` and `<PHONE_NUMBER>` rather than the original
-name and phone. An omission notice means inspection failed; it does not prove
-successful detection. This CLI check calls the configured LLM and requires its
-credentials. Use a new chat when retesting the desktop flow, since previous
-assistant messages can already contain the unfiltered values. Original tool
-previews remain local and may still show the source text.
+Models load from installed local files with `spacy.load()`; no training or
+`nlp.initialize()` is required. Email recognition uses the bundled public-suffix
+snapshot with remote refresh and caching disabled. Masking covers the complete
+union of overlapping detected spans. Failed worker operations can be retried on
+later calls; there is no permanent detector-failure latch.
 
 ## Supported payloads
 
-- Chat Completions text in messages with `role: user`.
-- Responses string input and text in input messages with `role: user`.
-- Tool-result text in Chat `role: tool` (and legacy `role: function`) messages
-  and Responses `function_call_output` items, including PDF text extracted by
-  Hermes' `read_file`. JSON results are parsed and string values are filtered;
-  JSON keys, numbers, booleans, and null values retain their original values.
-- Inline/base64 raster images in Chat and Responses user messages and tool results. Tesseract OCR
-  runs locally; detected text is covered with black rectangles before the image is sent.
-- PDFs attached through Hermes' `pdf.attach` flow, which renders pages to images,
-  are covered by the same image path.
-- Word `.docx` and Excel `.xlsx` attachments are converted locally to PDF pages,
-  rasterized, and filtered through the same image/OCR path. Supported inputs are
-  inline/base64 Chat `file` and Responses `input_file` parts with a `filename`,
-  or explicit `@file:` references in user messages to files inside the Hermes
-  process working directory. Other file text is covered when Hermes inlines it
-  into a user message.
+- Chat Completions text in `role: user` messages.
+- Responses string input and text in `role: user` input messages.
+- Tool-result text in Chat `role: tool` and legacy `role: function` messages,
+  and Responses `function_call_output` items. JSON result string values are
+  filtered; keys, numbers, booleans, and null values are preserved.
+- Inline/base64 raster images in user messages and tool results. Tesseract OCR
+  runs locally; detected text is covered with black rectangles before sending.
+- PDF pages rendered to images by Hermes' `pdf.attach` path use the image filter.
+- Inline/base64 Word `.docx` and Excel `.xlsx` attachments, and explicit user
+  `@file:` references inside the Hermes process working directory, are converted
+  to filtered page images. Tool-result text is never expanded as a local reference.
 
-**PDF file references and `pdf.attach` use different paths.** Hermes' desktop
-`file.attach` flow can submit a local file reference and let the agent call
-`read_file`. Hermes extracts the PDF as text and returns it as a tool result.
-The plugin filters that text before the next provider call. Word and Excel text
-returned by tools follows the same path. In contrast, `pdf.attach` renders pages
-as images, which pass through local OCR and pixel redaction. Neither path edits
-the source PDF: local tool output and history retain the original content.
-Tool-result text is never expanded as a local `@file:` reference.
+**PDF file references and `pdf.attach` differ.** A desktop `file.attach` reference
+may lead to `read_file` extracting PDF text. The next tool-result payload is
+filtered as text. `pdf.attach` renders images for OCR and pixel masking. Neither
+path modifies the source PDF, and local history/tool previews retain originals.
 
-Images must be inline base64 data that the plugin can inspect locally. Remote
-image URLs, opaque file IDs, unsupported files, audio, and video parts are
-replaced with an omission notice. Tesseract and trained data for the configured language must be installed
-and visible on the Hermes process' `PATH`; `pytesseract` alone does not install
-the Tesseract executable. On macOS, install the PDF renderer and English OCR
-runtime with `brew install poppler tesseract`; install `tesseract-lang` as well
-for languages beyond English. Image inspection is limited to 50 MiB and 40
-megapixels, with a 20-second OCR timeout per image. Install these tools before
-enabling the plugin, then restart Hermes.
+System/developer prompts, Responses instructions, assistant messages, and tool-call
+arguments are preserved and never analyzed. Protocol keys, roles, tool names,
+call IDs, schemas, metadata, unlisted fields, and unsupported message roles are
+preserved. Recognition of names, places, organizations, email, phones, IBANs,
+cards, and IP addresses depends on language, context, thresholds, and OCR quality.
+False positives and false negatives remain possible.
 
-### Word and Excel
+Remote image URLs, opaque file IDs, unsupported files, audio, and video are
+replaced with an omission notice. Original attachments are never a failure
+fallback, including in permissive mode. Image inspection is limited to 50 MiB
+and 40 megapixels; OCR has a 20-second timeout per image.
 
-Office files follow the same visual path as PDF attachments:
+### Image and Office prerequisites
 
-```text
-DOCX/XLSX → LibreOffice PDF → Poppler PNG pages → Tesseract + Presidio → blacked-out images
-```
-
-No additional Python packages are required for Office support. Install
-LibreOffice in addition to the Poppler and Tesseract system tools already used
-for PDF/image processing. `uv sync` and Hermes' plugin dependency installer do
-not install these programs. All three commands,
-`soffice`, `pdftoppm`, and `tesseract`, must be available on the Hermes process'
-`PATH`. On macOS:
+`hermes pii install` provisions Python packages and the NLP model. It does not
+install operating-system executables or OCR language data. `pytesseract` does
+not include Tesseract. Install required tools separately and make them visible
+on the environment's `PATH` before restarting Hermes:
 
 ```bash
-brew install --cask libreoffice
+# macOS: image/PDF support; add tesseract-lang for languages beyond English.
 brew install poppler tesseract
+# Office support:
+brew install --cask libreoffice
 # If soffice is not already on PATH:
 export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
 ```
@@ -222,124 +202,96 @@ On Ubuntu:
 sudo apt-get install libreoffice-writer libreoffice-calc poppler-utils tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
 ```
 
-Verify the commands from the same environment used to launch Hermes:
+Check the actual launch environment with `soffice --version`, `pdftoppm -v`,
+`tesseract --version`, and `tesseract --list-langs`. OCR data must match the plugin
+language (`eng` for English, `ita` for Italian); provision the spaCy model separately
+with `hermes pii install`.
 
-```bash
-soffice --version
-pdftoppm -v
-tesseract --version
-tesseract --list-langs
+Office processing follows this visual path:
+
+```text
+DOCX/XLSX → LibreOffice PDF → Poppler PNG pages → Tesseract + Presidio → blacked-out images
 ```
 
-The OCR language data must match the plugin's configured language (`eng` for the
-default English configuration). Install additional Tesseract language data when
-using another language, alongside the corresponding spaCy model described above.
+Only raster pages reach the provider, so an image-capable model is required.
+No editable anonymized Office copy is produced. Excel follows its print layout:
+hidden sheets, cells outside print areas, comments, metadata, and other content
+not rendered by LibreOffice are not sent. This is not structured spreadsheet
+extraction or inspection of every stored field.
 
-Restart Hermes, then attach a synthetic Office file or reference it in a user
-message, for example `Summarize @file:"documents/test.docx"`. Local references
-are restricted to the process working directory and its descendants, including
-after resolving symlinks. Place uploaded files in that workspace; references
-outside it are omitted. The plugin replaces Hermes' binary-file preview stub
-with filtered pages so it does not ask the model to read the original.
+Office inputs are limited to 20 MiB, 2,000 ZIP members, 100 MiB of expanded
+package content, and 20 pages. At most four references are expanded per text
+part. Conversion and rasterization each have a 60-second timeout, plus OCR's
+20-second timeout per page. Oversized documents are omitted in full, never
+silently truncated. A conversion/OCR failure on any page omits the entire
+attachment. Local references remain inside the working directory after symlink
+resolution; references outside it are omitted. Hermes' binary preview stub is
+replaced so it does not instruct the model to read the original.
 
-The provider receives only raster pages. Original Office files and local
-conversation history remain unchanged; no editable anonymized Office copy is
-produced. A model that accepts image input is required. Excel follows its print
-layout: hidden sheets, cells outside print areas, comments, metadata, and other
-content not rendered by LibreOffice are not sent. This is a visual preview,
-not structured spreadsheet extraction or inspection of every stored field.
-
-Office input is limited to 20 MiB, 2,000 ZIP members, 100 MiB of expanded package
-content, and 20 pages. At most four Office references are expanded per text
-part. Conversion and rasterization each have a 60-second timeout; the existing
-20-second OCR timeout applies per page. Oversized documents are omitted in
-full, rather than silently truncated. A conversion or OCR failure on any page
-omits the entire Office attachment. Temporary documents, PDFs, and page images
-are deleted after processing.
-
-Only `.docx` and `.xlsx` are supported in this version. Legacy `.doc`/`.xls`,
-macro-enabled, encrypted, externally linked, and embedded-object packages are
-unsupported. Conversion uses an isolated LibreOffice profile with macro
-security set to its highest level, macro execution disabled, and active
-OLE/DDE content disabled. It is not an operating-system sandbox.
-LibreOffice's [command-line conversion documentation](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html)
-describes the conversion interface used here.
-
-For a named test profile, list profiles with `hermes profile list`. If needed,
-link this checkout into that profile's plugin directory as described above.
-Then run `hermes -p <profile> plugins enable hermes-pii` and
-`hermes -p <profile> chat --tui`. Attach the PDF in the TUI. Ask Hermes to
-transcribe a synthetic email in it; the expected result is that it cannot read
-the blacked-out address. Check `hermes -p <profile> plugins list` to confirm the
-plugin is enabled in that profile.
-
-System/developer prompts, Responses instructions, assistant messages, and
-tool-call arguments are preserved and never analyzed. Messages without a
-supported role or a Responses `function_call_output` type are also preserved.
-Protocol keys, roles, tool names, call IDs, schemas, metadata, and unlisted
-provider fields are preserved. Within JSON tool-result bodies, string values
-are filtered while keys and non-string scalar values are preserved.
-Names, places, organizations, email, phones, IBANs, cards, and IP addresses are
-recognized in supported text and OCR output; accuracy and false positives depend on context and OCR quality.
-An OCR false negative can leave PII in an image, so this remains a best-effort
-filter rather than a confidentiality guarantee.
+Only `.docx` and `.xlsx` are supported. Legacy `.doc`/`.xls`, macro-enabled,
+encrypted, externally linked, and embedded-object packages are unsupported.
+LibreOffice runs with an isolated profile, maximum macro security, macro
+execution disabled, and active OLE/DDE content disabled. It is not an OS sandbox.
+See [LibreOffice conversion options](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html).
 
 ## Failure policy
 
-**User text is fail-open:** a detector/import/model error returns the original text,
-including any PII. Every later operation retries; there is no permanent failure
-latch. **Tool-result text is fail-closed:** if local detection fails, the text
-is replaced with an omission notice and later calls retry. **Attachments are
-fail-closed when inspection errors:** the affected part
-is replaced with an omission notice. Warnings contain only the exception class,
-never input, exception messages, or tracebacks. OCR can miss PII without raising
-an error, so attachment sanitization is not a guarantee that every image was
-fully redacted.
+**Strict (default, compatible host required):** detector/import/model/IPC errors
+abort the turn locally before the affected provider attempt. A safe visible error
+replaces silent discarding of tool evidence. Earlier successful provider/tool calls
+are not undone. A subsequent turn retries; no permanent failure latch is set.
 
-Local history retains original values. No recovery mapping or value restoration
-is implemented. Auxiliary calls and middleware-bypassing paths have not been
-verified end-to-end. This plugin must not be treated as a mandatory privacy
-barrier. Use only synthetic data for development and smoke tests.
+**Permissive (explicit):** affected text passes through, including any PII, and a
+safe warning states that filtering is degraded. Choose this only when
+availability matters more than confidentiality:
+
+```bash
+hermes config set plugins.entries.hermes-pii.settings.error_policy permissive
+```
+
+Restart after changing policy. Identical warnings are suppressed until a
+successful inspection without suppressing recovery attempts. Unsupported media
+and conversion errors retain the omission policy. A detector failure caught
+inside attachment inspection is also tracked for strict enforcement; it cannot
+silently become a successful inspection. OCR can miss PII without raising.
+
+Auxiliary calls and middleware-bypassing paths have not all been verified
+end-to-end. The plugin is not a mandatory privacy barrier. Use synthetic data for
+smoke tests; an LLM echoing placeholders is not wire-level evidence of coverage.
 
 ## Verification
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
-hermes plugins doctor . --ci
-hermes plugins validate . --json
+cccc hermes_pii tests --max-cognitive 19 --max-cyclomatic 19 --table
 uv pip check --python .venv/bin/python
+hermes pii status
 ```
 
-To include a real DOCX/XLSX conversion and OCR check, install the system tools
-above and run:
+Host contract validation is separate: `hermes plugins doctor . --ci` and
+`hermes plugins validate . --json` can report unavailable strict middleware on an
+unsupported host, even though its bootstrap CLI works. Do not treat successful
+runtime installation as proof of strict host support.
+
+For actual DOCX/XLSX conversion and OCR, install the system tools and run:
 
 ```bash
 HERMES_PII_OFFICE_SMOKE=1 uv run --no-sync python -m unittest discover -s tests -v
 ```
 
-CI runs this check on Python 3.12; other matrix entries run the unit suite.
-
-To check the desktop PDF file-read path with real Hermes extraction and the
-Italian NLP model, provision `it_core_news_sm` in Hermes' current environment
-and run from this checkout (adjust both paths for your installation):
+For the optional desktop PDF-read path, use the development environment with
+Hermes integration-test dependencies and an existing Italian model-data directory:
 
 ```bash
-HERMES_PII_PDF_SMOKE=1 PYTHONPATH="$HOME/.hermes/hermes-agent:$PWD" \
-  /path/to/hermes/environment/bin/python -m unittest discover -s tests -p test_tool_results.py -v
+HERMES_PII_PDF_SMOKE=1 HERMES_PII_ITALIAN_MODEL=/absolute/path/to/Italian-model-data \
+  uv run --no-sync python -m unittest discover -s tests -p test_tool_results.py -v
 ```
 
-For the persistent model directory above, also set
-`HERMES_PII_ITALIAN_MODEL="$HOME/.hermes/plugin-data/hermes-pii/models/it_core_news_sm/it_core_news_sm-3.8.0"`
-when invoking the smoke test.
-
-The bundled synthetic PDF contains `Ciao sono Mario e il numero di telefono è
-0797770099.` The smoke test reads it through Hermes' `read_file`, filters both
-Chat and Responses tool-result payloads, and asserts that the provider receives
-`<PERSON>` and `<PHONE_NUMBER>` instead of the original values. No remote LLM
-is called; socket connections are forbidden during detection.
-
-Tests cover real offline text detection, provider-payload rewriting, protocol
-preservation, synthetic image redaction, Office rendering and reference handling, unsupported-media omission, preparation
-without duplicate analysis, sanitized failures, and transient-error recovery.
-The text integration test uses a preinstalled model and forbids socket connections
-during redaction. Synthetic OCR tests do not contact Tesseract or a remote LLM.
+The bundled PDF contains synthetic Italian names and phone data. The test reads
+it with Hermes' `read_file`, checks Chat and Responses tool-result payloads, and
+forbids socket connections during in-process detection. No remote LLM is called.
+A parent-process socket mock does not constrain a subprocess: worker isolation
+and IPC behavior require their own tests. The suite also exercises a real local
+worker, timeout/EOF/malformed responses, recovery, concurrency, attachment-failure
+metadata, recording HTTP transports, original-payload preservation, and installer
+transaction/validation behavior.

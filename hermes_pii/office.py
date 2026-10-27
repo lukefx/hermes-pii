@@ -30,13 +30,17 @@ def _validate_package(raw, extension):
         if required not in package.namelist():
             raise ValueError("Office package does not match its extension")
         for item in members:
-            name = item.filename.lower()
-            if item.flag_bits & 1 or name.endswith("vbaproject.bin") or "/embeddings/" in name:
-                raise ValueError("encrypted or embedded active content is unsupported")
-            if name.endswith(".rels"):
-                root = ElementTree.fromstring(package.read(item))
-                if any(node.get("TargetMode", "").lower() == "external" for node in root):
-                    raise ValueError("external Office relationships are unsupported")
+            _validate_member(package, item)
+
+
+def _validate_member(package, item):
+    name = item.filename.lower()
+    if item.flag_bits & 1 or name.endswith("vbaproject.bin") or "/embeddings/" in name:
+        raise ValueError("encrypted or embedded active content is unsupported")
+    if name.endswith(".rels"):
+        root = ElementTree.fromstring(package.read(item))
+        if any(node.get("TargetMode", "").lower() == "external" for node in root):
+            raise ValueError("external Office relationships are unsupported")
 
 
 def _run(argv, timeout):

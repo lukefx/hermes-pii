@@ -8,13 +8,7 @@ version = "0.0.2"
 description = "Local Presidio PII redaction plugin for Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "presidio-analyzer>=2.2,<3",
-    "spacy>=3.8,<3.9",
-    "tldextract>=5,<6",
-    "pillow>=10,<13",
-    "pytesseract>=0.3.13,<0.4",
-]
+dependencies = []
 
 [project.entry-points."hermes_agent.plugins"]
 hermes-pii = "hermes_pii"
@@ -22,3 +16,15 @@ hermes-pii = "hermes_pii"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["hermes_pii*"]
+
+[tool.setuptools.package-data]
+hermes_pii = ["runtime-requirements.in", "runtime-requirements.txt"]
+
+[dependency-groups]
+dev = [
+    "presidio-analyzer>=2.2,<3",
+    "spacy>=3.8,<3.9",
+    "tldextract>=5,<6",
+    "pillow>=10,<13",
+    "pytesseract>=0.3.13,<0.4",
+]
